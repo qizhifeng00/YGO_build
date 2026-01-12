@@ -1,0 +1,29 @@
+{
+  "name": "ygogj",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "homepage": "https://qizhifeng00.github.io/YGO_build/",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc && vite build",
+    "preview": "vite preview",
+    "deploy": "gh-pages -d dist",
+    "deploy:build": "npm run build && gh-pages -d dist"
+  },
+  "dependencies": {
+    "chart.js": "^4.4.0",
+    "naive-ui": "^2.38.1",
+    "vue": "^3.4.15",
+    "vue-router": "^4.2.0",
+    "vuedraggable": "^4.1.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.3",
+    "gh-pages": "^6.3.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.11",
+    "vite-plugin-singlefile": "^2.3.0",
+    "vue-tsc": "^2.0.6"
+  }
+}
