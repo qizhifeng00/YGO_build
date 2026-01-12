@@ -1,0 +1,33 @@
+name: Deploy Vue Project
+
+on:
+  push:
+    branches:
+      - main  # 如果你的主分支叫 master，请改为 master
+
+permissions:
+  contents: write  # 赋予 Actions 写入仓库的权限
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install and Build
+        run: |
+          npm install
+          npm run build
+
+      - name: Deploy
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: dist    # Vue 打包后的文件夹名称
+          branch: gh-pages # 部署到的目标分支
