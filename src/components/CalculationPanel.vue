@@ -1,0 +1,691 @@
+<template>
+  <n-card title="计算核心" size="small" :segmented="{ content: true }">
+    <n-space vertical :size="16">
+      <!-- 结果展示区 -->
+      <div class="result-display">
+        <div class="result-main">
+   
+          <div class="probability-value">{{ calc.probability.value }}</div>
+        </div>
+        <div class="result-stats">
+          <div class="stat-item">
+            <n-text depth="3" style="font-size: 11px;">满足组合</n-text>
+            <n-text strong style="font-size: 14px;">{{ calc.validCombinations.value }}</n-text>
+          </div>
+          <n-divider vertical />
+          <div class="stat-item">
+            <n-text depth="3" style="font-size: 11px;">总组合数</n-text>
+            <n-text strong style="font-size: 14px;">{{ calc.totalCombinations.value }}</n-text>
+          </div>
+        </div>
+      </div>
+
+      <!-- 进度条 -->
+      <div v-if="calc.isCalculating.value || calc.calculationProgress.value > 0">
+        <n-progress
+          type="line"
+          :percentage="calc.calculationProgress.value"
+          :status="calc.isCalculating.value ? 'default' : 'success'"
+          :show-indicator="false"
+          height="4"
+          border-radius="2px"
+        />
+        <div style="display: flex; justify-content: space-between; margin-top: 4px;">
+          <n-text depth="3" style="font-size: 11px;">{{ calc.progressText.value }}</n-text>
+          <n-text depth="3" style="font-size: 11px;">{{ Math.round(calc.calculationProgress.value) }}%</n-text>
+        </div>
+      </div>
+
+      <!-- 操作按钮 -->
+      <n-grid :cols="2" :x-gap="8">
+        <n-grid-item>
+          <n-button
+            v-if="!calc.isCalculating.value"
+            type="primary"
+            @click="handleCalculate"
+            block
+            style="height: 44px; font-weight: 600;"
+          >
+            精确计算
+          </n-button>
+          <n-button
+            v-else
+            type="error"
+            @click="handleCancel"
+            block
+            ghost
+            style="height: 44px;"
+          >
+            取消
+          </n-button>
+        </n-grid-item>
+        <n-grid-item>
+          <n-button
+            v-if="!calc.isCalculating.value"
+            type="primary"
+            ghost
+            @click="handleMonteCarloCalculate"
+            block
+            style="height: 44px;"
+          >
+            快速估算
+          </n-button>
+        </n-grid-item>
+      </n-grid>
+
+      <!-- 重复卡牌概率计算 -->
+      <n-collapse>
+        <n-collapse-item title="🎴 重复卡牌概率" name="duplicate">
+          <div class="duplicate-section">
+            <n-space vertical :size="12">
+              <!-- 计算原理说明 -->
+              <n-alert type="info" :bordered="false" style="font-size: 12px;">
+                <template #header>
+                  <span style="font-size: 12px;">📐 计算原理</span>
+                </template>
+                基于<strong>超几何分布</strong>计算：从 N 张卡组中抽 n 张，恰好抽到 k 张目标卡的概率为
+                <code>C(K,k) × C(N-K,n-k) / C(N,n)</code>，
+                其中 K 为目标卡数量。卡手概率 = Σ P(k≥2)。
+              </n-alert>
+              
+              <!-- 单卡计算 -->
+              <div class="calc-mode-section">
+                <n-text strong style="font-size: 13px; margin-bottom: 8px; display: block;">📌 单卡计算</n-text>
+                <n-space align="center" :size="8" wrap>
+                  <n-select
+                    v-model:value="selectedCardIndex"
+                    :options="cardOptions"
+                    size="small"
+                    style="width: 160px;"
+                    placeholder="选择卡牌"
+                  />
+                  <n-button 
+                    size="small" 
+                    type="info" 
+                    @click="calculateDuplicateProbability"
+                    :disabled="selectedCardIndex === null || deck.totalCards.value === 0"
+                  >
+                    计算
+                  </n-button>
+                </n-space>
+              </div>
+              
+              <!-- 单卡重复概率结果 -->
+              <div v-if="duplicateResults.length > 0" class="duplicate-results">
+                <n-table :bordered="false" :single-line="false" size="small">
+                  <thead>
+                    <tr>
+                      <th>抽到张数</th>
+                      <th>概率</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="result in duplicateResults" :key="result.count">
+                      <td>
+                        <n-tag :type="result.count >= 2 ? 'warning' : 'default'" size="small">
+                          {{ result.count }} 张
+                        </n-tag>
+                      </td>
+                      <td>
+                        <n-text :type="result.count >= 2 ? 'warning' : 'default'" strong>
+                          {{ result.probability }}
+                        </n-text>
+                      </td>
+                    </tr>
+                    <tr class="highlight-row">
+                      <td>
+                        <n-tag type="error" size="small">≥2 张（卡手）</n-tag>
+                      </td>
+                      <td>
+                        <n-text type="error" strong>{{ duplicateTotalProb }}</n-text>
+                      </td>
+                    </tr>
+                  </tbody>
+                </n-table>
+              </div>
+
+              <n-divider style="margin: 8px 0;" />
+
+              <!-- 全部卡牌计算 -->
+              <div class="calc-mode-section">
+                <n-text strong style="font-size: 13px; margin-bottom: 8px; display: block;">📊 全部卡牌卡手率</n-text>
+                <n-button 
+                  size="small" 
+                  type="warning"
+                  @click="calculateAllDuplicates"
+                  :disabled="deck.totalCards.value === 0"
+                  :loading="isCalculatingAll"
+                >
+                  {{ isCalculatingAll ? '计算中...' : '计算全部' }}
+                </n-button>
+              </div>
+
+              <!-- 全部卡牌结果 -->
+              <div v-if="allDuplicateResults.length > 0" class="all-duplicate-results">
+                <div class="overall-result">
+                  <n-text depth="2">相同卡牌卡手概率：</n-text>
+                  <n-text type="error" strong style="font-size: 18px;">{{ overallDuplicateProb }}</n-text>
+                </div>
+                <n-table :bordered="false" :single-line="false" size="small" style="margin-top: 8px;">
+                  <thead>
+                    <tr>
+                      <th>卡牌</th>
+                      <th>数量</th>
+                      <th>卡手率(≥2张)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="result in allDuplicateResults" :key="result.index">
+                      <td>
+                        <n-text>{{ result.name }}</n-text>
+                      </td>
+                      <td>
+                        <n-tag size="tiny">{{ result.count }}张</n-tag>
+                      </td>
+                      <td>
+                        <n-text :type="parseFloat(result.prob) > 10 ? 'error' : parseFloat(result.prob) > 5 ? 'warning' : 'default'" strong>
+                          {{ result.prob }}
+                        </n-text>
+                      </td>
+                    </tr>
+                  </tbody>
+                </n-table>
+              </div>
+              
+              <n-text depth="3" style="font-size: 11px;">
+                💡 单卡计算：指定卡牌的详细抽取概率<br/>
+                💡 全部计算：所有多张卡的卡手风险汇总
+              </n-text>
+            </n-space>
+          </div>
+        </n-collapse-item>
+      </n-collapse>
+
+      <n-space justify="space-between">
+        <n-button text size="tiny" @click="handleExportRecords" style="color: #64748b;">
+          导出 CSV 记录
+        </n-button>
+        <n-button text size="tiny" @click="handleClearRecords" style="color: #ef4444;">
+          清除所有记录
+        </n-button>
+      </n-space>
+    </n-space>
+  </n-card>
+</template>
+
+<style scoped>
+.result-display {
+  padding: 10px 16px;
+  border-radius: 10px;
+  color: #000;
+  text-align: center;
+}
+.probability-value {
+  font-size: 26px;
+  font-weight: 700;
+  font-family: 'Inter', system-ui, sans-serif;
+  margin: 0;
+}
+.result-stats {
+  display: flex;
+  justify-content: space-around;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.stat-item :deep(.n-text) {
+  font-size: 12px;
+}
+
+/* 重复卡牌概率区域 */
+.duplicate-section {
+  padding: 8px 0;
+}
+
+.duplicate-results {
+  background: linear-gradient(135deg, #fefce8 0%, #fef3c7 100%);
+  border-radius: 8px;
+  padding: 12px;
+  border: 1px solid #fcd34d;
+}
+
+.duplicate-results :deep(.n-table) {
+  background: transparent;
+}
+
+.duplicate-results :deep(.n-table th) {
+  background: rgba(251, 191, 36, 0.2);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.duplicate-results :deep(.n-table td) {
+  font-size: 13px;
+}
+
+.duplicate-results :deep(.highlight-row) {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.duplicate-results :deep(.highlight-row td) {
+  border-top: 2px solid rgba(239, 68, 68, 0.3);
+}
+
+/* 计算模式区块 */
+.calc-mode-section {
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+/* 全部卡牌结果 */
+.all-duplicate-results {
+  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+  border-radius: 8px;
+  padding: 12px;
+  border: 1px solid #fca5a5;
+}
+
+.all-duplicate-results :deep(.n-table) {
+  background: transparent;
+}
+
+.all-duplicate-results :deep(.n-table th) {
+  background: rgba(239, 68, 68, 0.15);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.all-duplicate-results :deep(.n-table td) {
+  font-size: 12px;
+}
+
+.overall-result {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: white;
+  border-radius: 8px;
+  border: 2px solid #ef4444;
+}
+</style>
+
+<script setup>
+import { inject, ref, computed } from 'vue'
+import { 
+  NCard, NSpace, NButton, NProgress, NText, NAlert,
+  NDivider, NGrid, NGridItem, NCollapse, NCollapseItem,
+  NSelect, NTable, NTag, useMessage, useDialog 
+} from 'naive-ui'
+
+const message = useMessage()
+const dialog = useDialog()
+
+const deck = inject('deck')
+const calc = inject('calculation')
+const condition = inject('condition')
+const draws = inject('draws')
+const autoIncrementDraws = inject('autoIncrementDraws')
+
+// ========== 重复卡牌概率计算 ==========
+const selectedCardIndex = ref(null)
+const duplicateResults = ref([])
+const duplicateTotalProb = ref('0%')
+
+// 全部卡牌计算相关
+const isCalculatingAll = ref(false)
+const allDuplicateResults = ref([])
+const overallDuplicateProb = ref('0%')
+
+// 卡牌选项
+const cardOptions = computed(() => {
+  return deck.cards.value
+    .map((card, index) => ({
+      label: `${card.label}${card.name ? ` (${card.name})` : ''} - ${card.count}张`,
+      value: index,
+      disabled: card.count < 2
+    }))
+    .filter(opt => deck.cards.value[opt.value].count > 0)
+})
+
+// 组合数计算 C(n, k)
+function combination(n, k) {
+  if (k < 0 || k > n) return 0
+  if (k === 0 || k === n) return 1
+  
+  let result = 1
+  for (let i = 1; i <= k; i++) {
+    result = result * (n - k + i) / i
+  }
+  return result
+}
+
+// 计算单张卡的卡手概率（≥2张）
+function calcSingleCardDuplicateProb(cardCount, totalCards, drawCount) {
+  const totalComb = combination(totalCards, drawCount)
+  const otherCards = totalCards - cardCount
+  
+  let probSum2Plus = 0
+  for (let k = 2; k <= Math.min(cardCount, drawCount); k++) {
+    const waysToDrawK = combination(cardCount, k)
+    const waysToDrawRest = combination(otherCards, drawCount - k)
+    probSum2Plus += (waysToDrawK * waysToDrawRest) / totalComb
+  }
+  return probSum2Plus
+}
+
+// 计算重复卡牌概率（单卡）
+function calculateDuplicateProbability() {
+  if (selectedCardIndex.value === null) {
+    message.warning('请先选择一张卡牌')
+    return
+  }
+  
+  const cardIndex = selectedCardIndex.value
+  const card = deck.cards.value[cardIndex]
+  const cardCount = card.count // 该卡在卡组中的数量
+  const totalCards = deck.totalCards.value // 卡组总数
+  const drawCount = draws.value // 抽卡数
+  
+  if (totalCards === 0 || drawCount === 0) {
+    message.warning('卡组为空或抽卡数为0')
+    return
+  }
+  
+  if (drawCount > totalCards) {
+    message.warning('抽卡数不能超过卡组总数')
+    return
+  }
+  
+  // 计算抽到 k 张该卡的概率
+  // P(X=k) = C(cardCount, k) * C(totalCards - cardCount, drawCount - k) / C(totalCards, drawCount)
+  const results = []
+  const totalComb = combination(totalCards, drawCount)
+  const otherCards = totalCards - cardCount
+  
+  let probSum2Plus = 0
+  
+  for (let k = 0; k <= Math.min(cardCount, drawCount); k++) {
+    const waysToDrawK = combination(cardCount, k)
+    const waysToDrawRest = combination(otherCards, drawCount - k)
+    const prob = (waysToDrawK * waysToDrawRest) / totalComb
+    
+    results.push({
+      count: k,
+      probability: (prob * 100).toFixed(2) + '%'
+    })
+    
+    if (k >= 2) {
+      probSum2Plus += prob
+    }
+  }
+  
+  duplicateResults.value = results
+  duplicateTotalProb.value = (probSum2Plus * 100).toFixed(2) + '%'
+  
+  message.success(`已计算「${card.name || card.label}」的重复概率`)
+}
+
+// 计算全部卡牌的卡手概率
+function calculateAllDuplicates() {
+  const totalCards = deck.totalCards.value
+  const drawCount = draws.value
+  
+  if (totalCards === 0 || drawCount === 0) {
+    message.warning('卡组为空或抽卡数为0')
+    return
+  }
+  
+  if (drawCount > totalCards) {
+    message.warning('抽卡数不能超过卡组总数')
+    return
+  }
+  
+  isCalculatingAll.value = true
+  
+  // 使用 setTimeout 让 UI 有时间更新
+  setTimeout(() => {
+    try {
+      const results = []
+      const cardsWithMultiple = deck.cards.value.filter(c => c.count >= 2)
+      
+      // 计算每张卡的卡手概率
+      deck.cards.value.forEach((card, index) => {
+        if (card.count >= 2) {
+          const prob = calcSingleCardDuplicateProb(card.count, totalCards, drawCount)
+          results.push({
+            index,
+            name: card.name || card.label,
+            count: card.count,
+            prob: (prob * 100).toFixed(2) + '%'
+          })
+        }
+      })
+      
+      // 按卡手率排序（从高到低）
+      results.sort((a, b) => parseFloat(b.prob) - parseFloat(a.prob))
+      
+      // 使用蒙特卡洛模拟计算"任意卡牌卡手"的总概率
+      const overallProb = monteCarloAnyDuplicate(deck.cards.value.map(c => c.count), drawCount, 50000)
+      
+      allDuplicateResults.value = results
+      overallDuplicateProb.value = (overallProb * 100).toFixed(2) + '%'
+      
+      message.success('全部卡牌卡手率计算完成')
+    } catch (error) {
+      message.error('计算失败：' + error.message)
+    } finally {
+      isCalculatingAll.value = false
+    }
+  }, 50)
+}
+
+// 蒙特卡洛模拟：计算抽到任意重复卡牌的概率
+function monteCarloAnyDuplicate(cardCounts, drawCount, simulations) {
+  // 构建牌库
+  const deckArray = []
+  cardCounts.forEach((count, cardIndex) => {
+    for (let i = 0; i < count; i++) {
+      deckArray.push(cardIndex)
+    }
+  })
+  
+  if (deckArray.length === 0 || deckArray.length < drawCount) {
+    return 0
+  }
+  
+  let duplicateCount = 0
+  
+  for (let sim = 0; sim < simulations; sim++) {
+    // 洗牌（Fisher-Yates）
+    const shuffled = [...deckArray]
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+    }
+    
+    // 抽牌并统计
+    const drawn = shuffled.slice(0, drawCount)
+    const counts = {}
+    let hasDuplicate = false
+    
+    for (const cardIdx of drawn) {
+      counts[cardIdx] = (counts[cardIdx] || 0) + 1
+      if (counts[cardIdx] >= 2) {
+        hasDuplicate = true
+        break
+      }
+    }
+    
+    if (hasDuplicate) {
+      duplicateCount++
+    }
+  }
+  
+  return duplicateCount / simulations
+}
+
+async function handleCalculate() {
+  try {
+    // 验证输入
+    deck.checkDuplicateCardNames()
+    
+    const cardCounts = deck.cards.value.map(card => parseInt(card.count) || 0)
+    const drawCount = draws.value
+    const deckSize = deck.totalCards.value
+
+    if (drawCount <= 0) {
+      throw new Error('抽卡数必须大于0')
+    }
+    if (deckSize <= 0) {
+      throw new Error('卡组中至少要有1张卡')
+    }
+    if (drawCount > deckSize) {
+      throw new Error('抽卡数不能超过卡组总数')
+    }
+
+    const conditionText = condition.value.trim()
+    if (!conditionText) {
+      throw new Error('请输入逻辑判断条件')
+    }
+
+    // 转换条件
+    const convertedCondition = deck.convertCondition(conditionText)
+    console.log('转换后的条件:', convertedCondition)
+
+    // 检查等号使用
+    const conditionWithoutOperators = convertedCondition.replace(/==|<=|>=|!=/g, '')
+    if (conditionWithoutOperators.includes('=')) {
+      dialog.warning({
+        title: '提示',
+        content: "条件表达式中建议使用 '==' 或 '===' 判断相等，请检查是否正确。",
+        positiveText: '继续计算',
+        negativeText: '取消',
+        onPositiveClick: async () => {
+          await performCalculate(cardCounts, drawCount, convertedCondition)
+        }
+      })
+      return
+    }
+
+    await performCalculate(cardCounts, drawCount, convertedCondition)
+  } catch (error) {
+    message.error(error.message)
+  }
+}
+
+async function performCalculate(cardCounts, drawCount, convertedCondition) {
+  try {
+    await calc.calculate(cardCounts, drawCount, convertedCondition, deck.cards.value)
+    message.success('计算完成！')
+    
+    // 如果勾选了自动+1
+    if (autoIncrementDraws.value) {
+      draws.value = draws.value + 1
+    }
+  } catch (error) {
+    message.error(error.message)
+  }
+}
+
+async function handleMonteCarloCalculate() {
+  if (calc.isCalculating.value) {
+    const shouldContinue = await new Promise((resolve) => {
+      dialog.warning({
+        title: '确认',
+        content: '当前计算正在进行，是否取消并使用蒙特卡洛模拟计算？',
+        positiveText: '确定',
+        negativeText: '取消',
+        onPositiveClick: () => resolve(true),
+        onNegativeClick: () => resolve(false)
+      })
+    })
+    
+    if (!shouldContinue) return
+    calc.cancelCalculation()
+  }
+
+  try {
+    // 验证输入（与精确计算相同）
+    deck.checkDuplicateCardNames()
+    
+    const cardCounts = deck.cards.value.map(card => parseInt(card.count) || 0)
+    const drawCount = draws.value
+    const deckSize = deck.totalCards.value
+
+    if (drawCount <= 0) {
+      throw new Error('抽卡数必须大于0')
+    }
+    if (deckSize <= 0) {
+      throw new Error('卡组中至少要有1张卡')
+    }
+    if (drawCount > deckSize) {
+      throw new Error('抽卡数不能超过卡组总数')
+    }
+
+    const conditionText = condition.value.trim()
+    if (!conditionText) {
+      throw new Error('请输入逻辑判断条件')
+    }
+
+    const convertedCondition = deck.convertCondition(conditionText)
+    console.log('转换后的条件（蒙特卡洛）:', convertedCondition)
+
+    await calc.monteCarloCalculate(cardCounts, drawCount, convertedCondition, deck.cards.value)
+    message.success('蒙特卡洛模拟完成！')
+    
+    // 如果勾选了自动+1
+    if (autoIncrementDraws.value) {
+      draws.value = draws.value + 1
+    }
+  } catch (error) {
+    message.error(error.message)
+  }
+}
+
+function handleCancel() {
+  calc.cancelCalculation()
+  message.info('计算已取消')
+}
+
+function handleExportRecords() {
+  try {
+    const csvContent = calc.exportCalculationRecords()
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', '计算记录.csv')
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    
+    message.success('记录导出成功！')
+  } catch (error) {
+    message.error(error.message)
+  }
+}
+
+function handleClearRecords() {
+  dialog.warning({
+    title: '确认删除',
+    content: '确定删除所有计算记录吗？',
+    positiveText: '确定',
+    negativeText: '取消',
+    onPositiveClick: () => {
+      calc.clearCalculationRecords()
+      message.success('计算记录已删除')
+    }
+  })
+}
+</script>
+
