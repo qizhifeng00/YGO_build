@@ -12,6 +12,7 @@
     "deploy:build": "npm run build && gh-pages -d dist"
   },
   "dependencies": {
+    "@waline/client": "^3.8.0",
     "chart.js": "^4.4.0",
     "naive-ui": "^2.38.1",
     "vue": "^3.4.15",

@@ -3,44 +3,49 @@
     <n-message-provider>
       <n-dialog-provider>
         <n-layout style="min-height: 100vh; background-color: #f0f2f5;">
-          <n-layout-header bordered style="padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; background: #ffffff; box-shadow: 0 1px 2px 0 rgba(0,0,0,0.03);">
-            <div style="display: flex; align-items: center; gap: 12px;">
-              <div style="width: 32px; height: 32px; background: linear-gradient(135deg, #0f172a 0%, #334155 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 18px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+          <n-layout-header bordered class="app-header">
+            <div class="header-content">
+              <div class="logo-icon">
                 Y
               </div>
-              <n-h2 style="margin: 0; font-weight: 600; font-size: 20px; color: #1e293b; letter-spacing: -0.5px;">游戏王概率计算器</n-h2>
+              <n-h2 class="app-title">游戏王概率计算器</n-h2>
             </div>
          
           </n-layout-header>
           
-          <n-layout-content style="padding: 12px;">
-            <div style="max-width: 100%; margin: 0 auto; padding: 0 12px;">
+          <n-layout-content class="app-content">
+            <div class="content-wrapper">
               <n-space vertical :size="12">
                 <!-- 顶部：卡组管理 -->
                 <DeckManagement />
                 
                 <!-- 第一大行：卡牌配置 (占大部分) + [构成分布 & 决斗参数] (占右侧) -->
-                <n-grid :cols="24" :x-gap="12">
-                  <n-grid-item :span="16">
+                <n-grid :cols="24" :x-gap="12" :y-gap="12">
+                  <n-grid-item :span="gridSpans.cardInput">
                     <CardInput />
                   </n-grid-item>
-                  <n-grid-item :span="4">
+                  <n-grid-item :span="gridSpans.pieChart">
                     <DeckPieChart />
                   </n-grid-item>
-                  <n-grid-item :span="4">
+                  <n-grid-item :span="gridSpans.drawSettings">
                     <DrawSettings />
                   </n-grid-item>
                 </n-grid>
                 
                 <!-- 第二大行：逻辑判定 (左) + 计算核心 (右) -->
-                <n-grid :cols="24" :x-gap="12">
-                  <n-grid-item :span="13">
+                <n-grid :cols="24" :x-gap="12" :y-gap="12">
+                  <n-grid-item :span="gridSpans.conditionInput">
                     <ConditionInput />
                   </n-grid-item>
-                  <n-grid-item :span="11">
+                  <n-grid-item :span="gridSpans.calculationPanel">
                     <n-space vertical :size="12">
                       <CalculationPanel />
-                      <DeckOptimizer />
+                      <n-grid :cols="24" :x-gap="12" :y-gap="12">
+                        <n-grid-item :span="12"><ReasoningCalculator /></n-grid-item>
+                        <n-grid-item :span="12"><DeckOptimizer /></n-grid-item>
+                      </n-grid>
+                      
+                     
                     </n-space>
                   </n-grid-item>
                 </n-grid>
@@ -75,6 +80,11 @@
                   </n-collapse-item>
                 </n-collapse>
                 
+                <!-- Waline 评论区 -->
+                <n-card title="💬 评论区" :bordered="true" size="medium" >
+                  <div ref="walineRef"></div>
+                </n-card>
+                
                 <!-- 底部来源信息：完整还原 -->
                 <div style="text-align: center; padding: 8px 0; border-top: 1px dashed #cbd5e1; opacity: 0.8;">
                   <n-text depth="3" style="font-size: 11px;">
@@ -92,7 +102,9 @@
 </template>
 
 <script setup>
-import { ref, provide } from 'vue'
+import { ref, provide, onMounted, onUnmounted, computed } from 'vue'
+import { init } from '@waline/client'
+import '@waline/client/style'
 import { 
   NConfigProvider, NMessageProvider, NDialogProvider,
   NLayout, NLayoutHeader, NLayoutContent,
@@ -106,6 +118,7 @@ import DrawSettings from './components/DrawSettings.vue'
 import ConditionInput from './components/ConditionInput.vue'
 import CalculationPanel from './components/CalculationPanel.vue'
 import DeckOptimizer from './components/DeckOptimizer.vue'
+import ReasoningCalculator from './components/ReasoningCalculator.vue'
 import { useDeck } from './composables/useDeck'
 import { useCalculation } from './composables/useCalculation'
 import { useConditionBuilder } from './composables/useConditionBuilder'
@@ -144,6 +157,57 @@ const deck = useDeck()
 const calculation = useCalculation()
 const builder = useConditionBuilder()
 
+// 响应式布局
+const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1200)
+const isMobile = computed(() => windowWidth.value < 768)
+
+const handleResize = () => {
+  windowWidth.value = window.innerWidth
+}
+
+// 网格布局 span 值
+const gridSpans = computed(() => ({
+  cardInput: isMobile.value ? 24 : 18,
+  pieChart: isMobile.value ? 12 : 3,
+  drawSettings: isMobile.value ? 12 : 3,
+  conditionInput: isMobile.value ? 24 : 13,
+  calculationPanel: isMobile.value ? 24 : 11
+}))
+
+// Waline 评论系统
+const walineRef = ref(null)
+const walineInstance = ref(null)
+const serverURL = 'https://waline-ivory-one.vercel.app'
+
+onMounted(() => {
+  // 监听窗口大小变化
+  window.addEventListener('resize', handleResize)
+  
+  // 初始化 Waline
+  if (walineRef.value) {
+    walineInstance.value = init({
+      el: walineRef.value,
+      serverURL,
+      avatar: 'mp',
+      meta: ['nick', 'mail', 'link'],
+      pageview: true,
+      comment: true,
+      placeholder: '欢迎留下你的评论 💬',
+      emoji: [
+        '//unpkg.com/@waline/emojis@1.2.0/weibo',
+        '//unpkg.com/@waline/emojis@1.2.0/bilibili',
+      ],
+      imageUploader: false,
+      search: false,
+      lang: 'zh-CN',
+    })
+  }
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
+})
+
 // 条件和抽卡设置
 const condition = ref('')
 const conditionMode = ref('manual')
@@ -169,6 +233,7 @@ provide('autoIncrementDraws', autoIncrementDraws)
 body {
   background-color: #f0f2f5;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-text-size-adjust: 100%;
 }
 
 .n-card {
@@ -177,6 +242,56 @@ body {
 
 .n-card:hover {
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* 头部样式 */
+.app-header {
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #ffffff;
+  box-shadow: 0 1px 2px 0 rgba(0,0,0,0.03);
+}
+
+.header-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo-icon {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, #0f172a 0%, #334155 100%);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+  font-size: 18px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  flex-shrink: 0;
+}
+
+.app-title {
+  margin: 0;
+  font-weight: 600;
+  font-size: 20px;
+  color: #1e293b;
+  letter-spacing: -0.5px;
+}
+
+/* 内容区样式 */
+.app-content {
+  padding: 12px;
+}
+
+.content-wrapper {
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 0 12px;
 }
 
 /* 滚动条美化 */
@@ -193,6 +308,59 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+/* 移动端响应式 */
+@media screen and (max-width: 768px) {
+  .app-header {
+    padding: 10px 16px;
+  }
+  
+  .logo-icon {
+    width: 28px;
+    height: 28px;
+    font-size: 16px;
+  }
+  
+  .app-title {
+    font-size: 16px;
+  }
+  
+  .app-content {
+    padding: 8px;
+  }
+  
+  .content-wrapper {
+    padding: 0 4px;
+  }
+  
+  /* 禁用移动端卡片 hover 效果 */
+  .n-card:hover {
+    transform: none !important;
+  }
+}
+
+/* 小屏幕手机 */
+@media screen and (max-width: 480px) {
+  .app-header {
+    padding: 8px 12px;
+  }
+  
+  .header-content {
+    gap: 8px;
+  }
+  
+  .app-title {
+    font-size: 14px;
+  }
+  
+  .app-content {
+    padding: 6px;
+  }
+  
+  .content-wrapper {
+    padding: 0;
+  }
 }
 </style>
 
