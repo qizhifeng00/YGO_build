@@ -3,7 +3,7 @@
     <template #header-extra>
       <n-text depth="3" style="font-size: 12px;">共 {{ deck.cards.value.length }} 类卡</n-text>
     </template>
-    <n-grid :cols="15" :sm-cols="8" :md-cols="10" :lg-cols="12" :xl-cols="15" :x-gap="4" :y-gap="4">
+    <n-grid cols="2 s:4 m:6 l:10 xl:15" :x-gap="4" :y-gap="4" responsive="screen">
       <n-grid-item v-for="card in deck.cards.value" :key="card.id">
         <div class="card-item-box">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
@@ -66,6 +66,13 @@
 .max-count-set :deep(.n-input__input-el) {
   color: #f59e0b;
   font-weight: 600;
+}
+
+/* 移动端响应式 */
+@media screen and (max-width: 640px) {
+  .card-item-box {
+    padding: 6px 8px;
+  }
 }
 </style>
 
