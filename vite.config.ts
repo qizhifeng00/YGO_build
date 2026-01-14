@@ -5,7 +5,8 @@ import { viteSingleFile } from 'vite-plugin-singlefile'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  base: '/YGO_build/',  // GitHub Pages 子目录部署必须设置
+  // GitHub Pages 需要 /YGO_build/，Cloudflare Pages 需要 /
+  base: process.env.CF_PAGES ? '/' : '/YGO_build/',
   plugins: [vue()],
   resolve: {
     alias: {
