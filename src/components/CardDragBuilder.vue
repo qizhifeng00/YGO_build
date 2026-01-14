@@ -721,7 +721,7 @@ defineExpose({
   aspect-ratio: 59 / 86; /* 标准游戏王卡牌比例 */
   cursor: grab;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  background-image: url('https://images.ygoprodeck.com/images/cards/back.jpg');
+  background-image: url('@/images/back.jpg');
   background-size: cover;
   background-position: center;
   border-radius: 5px;
