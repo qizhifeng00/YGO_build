@@ -1,4 +1,8 @@
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
+import {
+  generateExactWorkerCode,
+  generateMonteCarloWorkerCode
+} from '@ygo_build/calc'
 
 const MAX_STORAGE_SIZE = 5 * 1024 * 1024 // 5MB
 
@@ -104,94 +108,14 @@ export function useCalculation() {
     isCalculating.value = false
   }
 
-  // 精确计算
+  // 精确计算（使用 ygo-build-calc 库生成的 Worker 代码）
   function calculate(cardCounts, draws, condition, cards) {
     return new Promise((resolve, reject) => {
       startCalculation()
 
       try {
-        // 创建Worker
-        const workerCode = `
-          const combinationCache = new Map();
-          
-          function combination(n, k) {
-            if (k < 0 || k > n) return 0n;
-            if (k === 0n || k === n) return 1n;
-            
-            const key = \`\${n},\${k}\`;
-            if (combinationCache.has(key)) return combinationCache.get(key);
-            
-            let result = 1n;
-            for (let i = 1n; i <= BigInt(k); i++) {
-              result = result * (BigInt(n) - BigInt(k) + i) / i;
-            }
-            
-            combinationCache.set(key, result);
-            return result;
-          }
-
-          function varToIndex(varName) {
-            const lc = varName.toLowerCase();
-            if (lc.length === 1) {
-              const code = lc.charCodeAt(0) - 97;
-              if (code >= 0 && code < 26) return code;
-            }
-            if (lc.length === 2 && lc[0] === 'a') {
-              const code = lc.charCodeAt(1) - 97;
-              if (code >= 0 && code < 4) return 26 + code;
-            }
-            throw new Error(\`无效的卡名称: \${varName}\`);
-          }
-
-          function calculateProbability(cardCounts, draws, condition) {
-            const totalCards = cardCounts.reduce((a, b) => a + b, 0);
-            let valid = 0n, total = 0n;
-            let lastReportedProgress = 0;
-
-            const conditionFunc = new Function('counts', \`return \${condition.replace(/([a-zA-Z]+)/g, (m) => \`counts[\${varToIndex(m)}]\`)}\`);
-
-            function recurse(index, counts, remaining) {
-              if (index === cardCounts.length) {
-                if (remaining !== 0) return;
-                
-                let prob = 1n;
-                for (let i = 0; i < counts.length; i++) {
-                  prob *= combination(cardCounts[i], counts[i]);
-                }
-                
-                total += prob;
-                if (conditionFunc(counts)) valid += prob;
-                return;
-              }
-
-              const progress = Math.min(100, Math.floor((index / cardCounts.length) * 100));
-              if (progress > lastReportedProgress) {
-                lastReportedProgress = progress;
-                postMessage({ type: 'progress', progress });
-              }
-
-              const max = Math.min(cardCounts[index], remaining);
-              for (let k = 0; k <= max; k++) {
-                counts[index] = k;
-                recurse(index + 1, [...counts], remaining - k);
-              }
-            }
-
-            recurse(0, [], draws);
-            return { valid, total };
-          }
-
-          onmessage = function(e) {
-            const { cardCounts, draws, condition } = e.data;
-            try {
-              const result = calculateProbability(cardCounts, draws, condition);
-              postMessage({ type: 'result', ...result });
-            } catch (error) {
-              postMessage({ type: 'error', message: error.message });
-            }
-          };
-        `
-
+        // 使用库生成 Worker 代码
+        const workerCode = generateExactWorkerCode()
         const blob = new Blob([workerCode], { type: 'text/javascript' })
         calculationWorker = new Worker(URL.createObjectURL(blob))
 
@@ -215,93 +139,14 @@ export function useCalculation() {
     })
   }
 
-  // 蒙特卡洛模拟
+  // 蒙特卡洛模拟（使用 ygo-build-calc 库生成的 Worker 代码）
   function monteCarloCalculate(cardCounts, draws, condition, cards) {
     return new Promise((resolve, reject) => {
       startCalculation()
 
       try {
-        const workerCode = `
-          function varToIndex(varName) {
-            const lc = varName.toLowerCase();
-            if (lc.length === 1) {
-              const code = lc.charCodeAt(0) - 97;
-              if (code >= 0 && code < 26) return code;
-            }
-            if (lc.length === 2 && lc[0] === 'a') {
-              const code = lc.charCodeAt(1) - 97;
-              if (code >= 0 && code < 4) return 26 + code;
-            }
-            throw new Error("无效的卡名称: " + varName);
-          }
-
-          function drawCards(shuffledDeck, draws) {
-            let counts = Array(30).fill(0);
-            const drawn = shuffledDeck.slice(0, draws);
-            drawn.forEach(idx => { counts[idx]++; });
-            return counts;
-          }
-
-          function shuffleArray(arr) {
-            let array = arr.slice();
-            for (let i = array.length - 1; i > 0; i--) {
-              let j = Math.floor(Math.random() * (i + 1));
-              [array[i], array[j]] = [array[j], array[i]];
-            }
-            return array;
-          }
-
-          onmessage = function(e) {
-            const { cardCounts, draws, condition } = e.data;
-            
-            let deck = [];
-            for (let i = 0; i < cardCounts.length; i++) {
-              for (let j = 0; j < cardCounts[i]; j++) {
-                deck.push(i);
-              }
-            }
-            
-            if (deck.length === 0) {
-              postMessage({ type: 'result', valid: 0, total: 500000, calculationMethod: "蒙特卡洛模拟" });
-              return;
-            }
-
-            const totalSimulations = 500000;
-            let valid = 0;
-            
-            const replacedCondition = condition.replace(/([a-zA-Z]+)/g, function(m) {
-              return "counts[" + varToIndex(m) + "]";
-            });
-            const conditionFunc = new Function("counts", "return " + replacedCondition);
-            
-            let iter = 0;
-            let lastReported = 0;
-
-            function runChunk() {
-              const chunkSize = 5000;
-              for (let i = 0; i < chunkSize && iter < totalSimulations; i++, iter++) {
-                const shuffled = shuffleArray(deck);
-                const result = drawCards(shuffled, draws);
-                if (conditionFunc(result)) valid++;
-              }
-              
-              const progress = Math.floor((iter / totalSimulations) * 100);
-              if (progress > lastReported) {
-                lastReported = progress;
-                postMessage({ type: 'progress', progress });
-              }
-              
-              if (iter < totalSimulations) {
-                setTimeout(runChunk, 0);
-              } else {
-                postMessage({ type: 'result', valid, total: totalSimulations, calculationMethod: "蒙特卡洛模拟" });
-              }
-            }
-            
-            runChunk();
-          };
-        `
-
+        // 使用库生成 Worker 代码
+        const workerCode = generateMonteCarloWorkerCode()
         const blob = new Blob([workerCode], { type: 'text/javascript' })
         calculationWorker = new Worker(URL.createObjectURL(blob))
 
@@ -317,7 +162,12 @@ export function useCalculation() {
           }
         }
 
-        calculationWorker.postMessage({ cardCounts, draws, condition })
+        calculationWorker.postMessage({ 
+          cardCounts, 
+          draws, 
+          condition,
+          simulations: 100000 // 默认模拟10万次
+        })
       } catch (error) {
         const errorMsg = showError(error.message)
         reject(new Error(errorMsg))
@@ -405,4 +255,3 @@ export function useCalculation() {
     clearCalculationRecords
   }
 }
-

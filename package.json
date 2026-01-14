@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@waline/client": "^3.8.0",
+    "@ygo_build/calc": "^0.0.2",
     "chart.js": "^4.4.0",
     "naive-ui": "^2.38.1",
     "vue": "^3.4.15",

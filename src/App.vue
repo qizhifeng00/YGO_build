@@ -10,12 +10,31 @@
               </div>
               <n-h2 class="app-title">游戏王概率计算器</n-h2>
             </div>
-         
           </n-layout-header>
           
           <n-layout-content class="app-content">
             <div class="content-wrapper">
               <n-space vertical :size="12">
+                <!-- 构想功能切换 -->
+                <div class="feature-ideas-bar">
+                  <n-space align="center" :size="8">
+                    <n-text depth="2" style="font-size: 12px; font-weight: 500;">💡 功能构想：</n-text>
+                    <n-tag 
+                      v-for="idea in featureIdeas" 
+                      :key="idea.id"
+                      :type="idea.status === 'done' ? 'success' : idea.status === 'wip' ? 'warning' : 'default'"
+                      size="small"
+                      :bordered="false"
+                      style="cursor: default;"
+                    >
+                      <template #icon>
+                        <span style="font-size: 10px;">{{ idea.status === 'done' ? '✅' : idea.status === 'wip' ? '🔧' : '📝' }}</span>
+                      </template>
+                      {{ idea.name }}
+                    </n-tag>
+                  </n-space>
+                </div>
+                
                 <!-- 顶部：卡组管理 -->
                 <DeckManagement />
                 
@@ -44,8 +63,7 @@
                         <n-grid-item :span="12"><ReasoningCalculator /></n-grid-item>
                         <n-grid-item :span="12"><DeckOptimizer /></n-grid-item>
                       </n-grid>
-                      
-                     
+                      <SmallWorldCalculator />
                     </n-space>
                   </n-grid-item>
                 </n-grid>
@@ -109,7 +127,7 @@ import {
   NConfigProvider, NMessageProvider, NDialogProvider,
   NLayout, NLayoutHeader, NLayoutContent,
   NH2, NText, NSpace, NGrid, NGridItem, NCard,
-  NCollapse, NCollapseItem
+  NCollapse, NCollapseItem, NTag
 } from 'naive-ui'
 import DeckManagement from './components/DeckManagement.vue'
 import CardInput from './components/CardInput.vue'
@@ -119,6 +137,7 @@ import ConditionInput from './components/ConditionInput.vue'
 import CalculationPanel from './components/CalculationPanel.vue'
 import DeckOptimizer from './components/DeckOptimizer.vue'
 import ReasoningCalculator from './components/ReasoningCalculator.vue'
+import SmallWorldCalculator from './components/SmallWorldCalculator.vue'
 import { useDeck } from './composables/useDeck'
 import { useCalculation } from './composables/useCalculation'
 import { useConditionBuilder } from './composables/useConditionBuilder'
@@ -151,6 +170,12 @@ const themeOverrides = {
     borderRadius: '8px'
   }
 }
+
+// 功能构想列表
+const featureIdeas = ref([
+  { id: 1, name: '启动率优化器', status: 'wip' },
+  { id: 2, name: '补全所有需要计算的卡牌的计算功能', status: 'plan' },
+])
 
 // 初始化状态
 const deck = useDeck()
@@ -360,6 +385,25 @@ body {
   
   .content-wrapper {
     padding: 0;
+  }
+}
+
+/* 功能构想栏 */
+.feature-ideas-bar {
+  padding: 8px 12px;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border-radius: 8px;
+  border: 1px solid #fcd34d;
+  overflow-x: auto;
+}
+
+.feature-ideas-bar::-webkit-scrollbar {
+  height: 4px;
+}
+
+@media screen and (max-width: 768px) {
+  .feature-ideas-bar {
+    padding: 6px 8px;
   }
 }
 </style>

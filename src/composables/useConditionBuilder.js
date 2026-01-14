@@ -1,4 +1,8 @@
 import { ref, computed } from 'vue'
+import {
+  parseCondition,
+  conditionToString
+} from '@ygo_build/calc'
 
 const builderOperators = {
   gt: '>',
@@ -194,261 +198,38 @@ export function useConditionBuilder() {
     return null
   }
 
-  // 生成条件文本
+  // 生成条件文本（使用 ygo-build-calc 库）
   function generateConditionText(condition) {
     if (!condition) return ''
     
-    if (condition.type === 'single') {
-      const cardsText = condition.cards
-        .map((c, i) => i === 0 ? c.name : `${c.operator || '+'} ${c.name}`)
-        .join(' ')
-      const operator = builderOperators[condition.symbol] || condition.symbol || ''
-      return `(${cardsText}) ${operator} ${condition.num}`
+    try {
+      return conditionToString(condition)
+    } catch (error) {
+      console.error('生成条件文本失败:', error)
+      return ''
     }
-
-    const childrenText = condition.children
-      .map(generateConditionText)
-      .filter(Boolean)
-    
-    return childrenText.length > 1
-      ? `(${childrenText.join(condition.type === 'and' ? ' && ' : ' || ')})`
-      : childrenText[0] || ''
   }
 
-  // 验证条件文本是否可以被解析
+  // 验证条件文本是否可以被解析（使用 ygo-build-calc 库）
   function validateCondition(conditionStr) {
     try {
       if (!conditionStr || !conditionStr.trim()) {
         return { valid: true, error: null }
       }
-      parseManualCondition(conditionStr)
+      parseCondition(conditionStr)
       return { valid: true, error: null }
     } catch (e) {
       return { valid: false, error: e.message }
     }
   }
 
-  // 解析手动输入的条件
+  // 解析手动输入的条件（使用 ygo-build-calc 库）
   function parseManualCondition(manualStr) {
-    manualStr = manualStr.trim()
-    if (!manualStr) throw new Error('空的条件')
-
-    const tokens = tokenize(manualStr)
-    if (tokens.length === 0) {
-      throw new Error('无法解析条件：无有效标记')
+    try {
+      return parseCondition(manualStr)
+    } catch (error) {
+      throw new Error(`解析条件失败: ${error.message}`)
     }
-    
-    const parser = new Parser(tokens)
-    const tree = parseExpression(parser)
-
-    if (!parser.eof()) {
-      throw new Error('无法解析条件：' + manualStr + '（剩余: ' + parser.remaining() + '）')
-    }
-
-    // 规范化结果：确保返回的是 and/or 类型的根节点
-    if (tree && tree.type === 'single') {
-      return { type: 'and', children: [tree] }
-    }
-
-    // 处理嵌套的 and/or 结构，展平不必要的嵌套
-    return flattenCondition(tree)
-  }
-
-  // 展平条件结构（合并相同类型的嵌套）
-  function flattenCondition(condition) {
-    if (!condition) return condition
-    
-    if (condition.type === 'single') {
-      return condition
-    }
-    
-    if (condition.type === 'and' || condition.type === 'or') {
-      const flatChildren = []
-      for (const child of condition.children) {
-        const flatChild = flattenCondition(child)
-        // 如果子节点和父节点类型相同，展平它
-        if (flatChild.type === condition.type) {
-          flatChildren.push(...flatChild.children)
-        } else {
-          flatChildren.push(flatChild)
-        }
-      }
-      return { type: condition.type, children: flatChildren }
-    }
-    
-    return condition
-  }
-
-  // Tokenize表达式 - 增强版，支持更多字符
-  function tokenize(expr) {
-    // 支持：字母、数字、中文、下划线组成的标识符
-    // 支持：>=, <=, ==, !=, &&, ||
-    // 支持：+, -, *, /, (, ), <, >
-    const regex = /\s*([A-Za-z0-9_\u4e00-\u9fa5]+|>=|<=|==|!=|&&|\|\||[-+*/()<>])\s*/g
-    let tokens = []
-    let m
-    let lastIndex = 0
-    
-    while ((m = regex.exec(expr)) !== null) {
-      // 检查是否有未匹配的字符
-      if (m.index > lastIndex) {
-        const skipped = expr.substring(lastIndex, m.index).trim()
-        if (skipped) {
-          throw new Error(`不支持的字符: "${skipped}"`)
-        }
-      }
-      tokens.push(m[1])
-      lastIndex = regex.lastIndex
-    }
-    
-    // 检查末尾是否有未匹配的字符
-    const remaining = expr.substring(lastIndex).trim()
-    if (remaining) {
-      throw new Error(`不支持的字符: "${remaining}"`)
-    }
-    
-    return tokens
-  }
-
-  // Parser类
-  class Parser {
-    constructor(tokens) {
-      this.tokens = tokens
-      this.pos = 0
-    }
-
-    peek() {
-      return this.tokens[this.pos]
-    }
-
-    consume(token) {
-      if (token && this.tokens[this.pos] !== token) {
-        throw new Error(`预期 ${token}，但得到 ${this.tokens[this.pos] || '结束'}`)
-      }
-      return this.tokens[this.pos++]
-    }
-
-    eof() {
-      return this.pos >= this.tokens.length
-    }
-
-    remaining() {
-      return this.tokens.slice(this.pos).join(' ')
-    }
-  }
-
-  // 解析表达式
-  function parseExpression(parser) {
-    return parseLogicalOr(parser)
-  }
-
-  function parseLogicalOr(parser) {
-    let node = parseLogicalAnd(parser)
-    while (!parser.eof() && parser.peek() === '||') {
-      parser.consume('||')
-      const right = parseLogicalAnd(parser)
-      node = { type: 'or', children: [node, right] }
-    }
-    return node
-  }
-
-  function parseLogicalAnd(parser) {
-    let node = parseRelational(parser)
-    while (!parser.eof() && parser.peek() === '&&') {
-      parser.consume('&&')
-      const right = parseRelational(parser)
-      node = { type: 'and', children: [node, right] }
-    }
-    return node
-  }
-
-  function parseRelational(parser) {
-    let left = parseSum(parser)
-    
-    // 如果 left 已经是一个条件对象（从括号表达式返回），直接返回
-    if (left && typeof left === 'object' && (left.type === 'single' || left.type === 'and' || left.type === 'or')) {
-      return left
-    }
-    
-    if (!parser.eof() && /^(>=|<=|==|!=|>|<)$/.test(parser.peek())) {
-      const op = parser.consume()
-      const num = parser.consume()
-      if (!/^\d+$/.test(num)) {
-        throw new Error(`预期数字，但得到 ${num || '结束'}`)
-      }
-
-      let cards = []
-      if (Array.isArray(left)) {
-        cards.push({ name: left[0] })
-        for (let i = 1; i < left.length; i += 2) {
-          let operator = left[i]
-          let operand = left[i + 1]
-          cards.push({ operator, name: operand })
-        }
-      } else if (typeof left === 'string') {
-        cards.push({ name: left })
-      } else {
-        throw new Error(`无法解析表达式左侧: ${JSON.stringify(left)}`)
-      }
-
-      return { type: 'single', cards: cards, symbol: mapOperator(op), num: num }
-    }
-    return left
-  }
-
-  function parseSum(parser) {
-    if (parser.peek() === '(') {
-      parser.consume('(')
-      
-      // 尝试解析括号内的内容
-      // 先尝试作为完整表达式解析（处理 drag 模式的格式如 (a >= 1)）
-      const startPos = parser.pos
-      try {
-        const node = parseExpression(parser)
-        if (parser.peek() === ')') {
-          parser.consume(')')
-          return node
-        }
-      } catch (e) {
-        // 解析失败，回溯
-        parser.pos = startPos
-      }
-      
-      // 如果不是完整表达式，作为操作数求和解析（处理 builder 模式的格式如 (a + b)）
-      parser.pos = startPos
-      let items = []
-      items.push(parser.consume())
-      while (!parser.eof() && (parser.peek() === '+' || parser.peek() === '-' || parser.peek() === '*' || parser.peek() === '/')) {
-        let operator = parser.consume()
-        items.push(operator)
-        items.push(parser.consume())
-      }
-      parser.consume(')')
-      return items.length === 1 ? items[0] : items
-    }
-
-    // 没有括号，直接解析标识符或数字
-    let items = []
-    items.push(parser.consume())
-    while (!parser.eof() && (parser.peek() === '+' || parser.peek() === '-' || parser.peek() === '*' || parser.peek() === '/')) {
-      let operator = parser.consume()
-      items.push(operator)
-      items.push(parser.consume())
-    }
-    return items.length === 1 ? items[0] : items
-  }
-
-  function mapOperator(op) {
-    const opMap = {
-      '>': 'gt',
-      '<': 'lt',
-      '==': 'eq',
-      '!=': 'neq',
-      '>=': 'gte',
-      '<=': 'lte'
-    }
-    if (!opMap[op]) throw new Error('不支持的运算符：' + op)
-    return opMap[op]
   }
 
   // 初始化构建器
@@ -490,4 +271,3 @@ export function useConditionBuilder() {
     conditionText
   }
 }
-
