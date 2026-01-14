@@ -99,7 +99,7 @@
                 </n-collapse>
                 
                 <!-- Waline 评论区 -->
-                <n-card title="💬 评论区" :bordered="true" size="medium" >
+                <n-card title="💬 反馈区(因反馈功能服务在vercel,有时可能使用不了...,如有问题或建议，欢迎通过qq 312999192联系)" :bordered="true" size="medium" >
                   <div ref="walineRef"></div>
                 </n-card>
                 
