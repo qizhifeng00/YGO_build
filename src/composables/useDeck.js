@@ -24,7 +24,8 @@ export function useDeck() {
     count: 0,
     name: '',
     label: getCardLabel(i),
-    maxCount: null // 单张卡最大上限，null 表示使用默认值 3
+    maxCount: null, // 单张卡最大上限，null 表示使用默认值 3
+    cardId: null // YGOPro 卡片 ID（用于显示卡图）
   })))
 
   // 卡组列表
@@ -101,7 +102,8 @@ export function useDeck() {
       cards: cards.value.map(card => ({
         count: card.count,
         name: card.name,
-        maxCount: card.maxCount // 保存最大上限
+        maxCount: card.maxCount, // 保存最大上限
+        cardId: card.cardId // 保存卡片 ID（用于显示卡图）
       })),
       condition,
       conditionInputMode,
@@ -138,6 +140,7 @@ export function useDeck() {
         cards.value[i].count = card.count
         cards.value[i].name = card.name
         cards.value[i].maxCount = card.maxCount ?? null // 加载最大上限
+        cards.value[i].cardId = card.cardId ?? null // 加载卡片 ID
       }
     })
 

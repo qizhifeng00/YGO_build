@@ -1,5 +1,5 @@
 <template>
-  <n-card title="逻辑判定" size="small" :segmented="{ content: true }">
+  <n-card id="condition-input-card" title="逻辑判定" size="small" :segmented="{ content: true }">
     <template #header-extra>
       <n-radio-group v-model:value="localConditionMode" size="small">
         <n-radio-button value="drag">卡牌拖动</n-radio-button>

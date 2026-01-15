@@ -13,8 +13,16 @@
             <p style="margin: 0; color: #94a3b8;">参数：ATK、DEF、等级、种族、属性</p>
           </div>
         </n-tooltip>
+        <n-button 
+          size="tiny" 
+          type="primary"
+          :loading="isImportingFromDeck"
+          @click="importFromDeck"
+        >
+          从卡组导入
+        </n-button>
         <n-button size="tiny" quaternary @click="showImportModal = true">
-          导入
+          JSON导入
         </n-button>
       </n-space>
     </template>
@@ -263,41 +271,43 @@
         </n-space>
         
         <div v-if="analysisTarget && analysisResult" class="analysis-results">
-          <!-- 可直接连接 -->
-          <n-collapse-item name="direct" :title="`✅ 可直接连接 (${analysisResult.direct.length})`">
-            <div v-if="analysisResult.direct.length > 0" class="reachable-list">
-              <div v-for="item in analysisResult.direct" :key="item.monster.id" class="reachable-item direct">
-                <n-text>{{ item.monster.name || '未命名' }}</n-text>
-                <n-text depth="3" style="font-size: 10px;">
-                  匹配: {{ item.matchParams.map(m => `${m.param}=${m.value}`).join(', ') }}
-                </n-text>
+          <n-collapse :default-expanded-names="['direct', 'bridge', 'unreachable']">
+            <!-- 可直接连接 -->
+            <n-collapse-item name="direct" :title="`✅ 可直接连接 (${analysisResult.direct.length})`">
+              <div v-if="analysisResult.direct.length > 0" class="reachable-list">
+                <div v-for="item in analysisResult.direct" :key="item.monster.id" class="reachable-item direct">
+                  <n-text>{{ item.monster.name || '未命名' }}</n-text>
+                  <n-text depth="3" style="font-size: 10px;">
+                    匹配: {{ item.matchParams.map(m => `${m.param}=${m.value}`).join(', ') }}
+                  </n-text>
+                </div>
               </div>
-            </div>
-            <n-text v-else depth="3" style="font-size: 11px;">无</n-text>
-          </n-collapse-item>
-          
-          <!-- 需要桥梁 -->
-          <n-collapse-item name="bridge" :title="`🌉 需要桥梁 (${analysisResult.viaBridge.length})`">
-            <div v-if="analysisResult.viaBridge.length > 0" class="reachable-list">
-              <div v-for="item in analysisResult.viaBridge" :key="item.monster.id" class="reachable-item bridge">
-                <n-text>{{ item.monster.name || '未命名' }}</n-text>
-                <n-text depth="3" style="font-size: 10px;">
-                  可用桥梁: {{ item.bridges.map(b => b.monster.name || '未命名').join(', ') }}
-                </n-text>
+              <n-text v-else depth="3" style="font-size: 11px;">无</n-text>
+            </n-collapse-item>
+            
+            <!-- 需要桥梁 -->
+            <n-collapse-item name="bridge" :title="`🌉 需要桥梁 (${analysisResult.viaBridge.length})`">
+              <div v-if="analysisResult.viaBridge.length > 0" class="reachable-list">
+                <div v-for="item in analysisResult.viaBridge" :key="item.monster.id" class="reachable-item bridge">
+                  <n-text>{{ item.monster.name || '未命名' }}</n-text>
+                  <n-text depth="3" style="font-size: 10px;">
+                    可用桥梁: {{ item.bridges.map(b => b.monster.name || '未命名').join(', ') }}
+                  </n-text>
+                </div>
               </div>
-            </div>
-            <n-text v-else depth="3" style="font-size: 11px;">无</n-text>
-          </n-collapse-item>
-          
-          <!-- 无法到达 -->
-          <n-collapse-item name="unreachable" :title="`❌ 无法到达 (${analysisResult.unreachable.length})`">
-            <div v-if="analysisResult.unreachable.length > 0" class="reachable-list">
-              <div v-for="item in analysisResult.unreachable" :key="item.id" class="reachable-item unreachable">
-                <n-text>{{ item.name || '未命名' }}</n-text>
+              <n-text v-else depth="3" style="font-size: 11px;">无</n-text>
+            </n-collapse-item>
+            
+            <!-- 无法到达 -->
+            <n-collapse-item name="unreachable" :title="`❌ 无法到达 (${analysisResult.unreachable.length})`">
+              <div v-if="analysisResult.unreachable.length > 0" class="reachable-list">
+                <div v-for="item in analysisResult.unreachable" :key="item.id" class="reachable-item unreachable">
+                  <n-text>{{ item.name || '未命名' }}</n-text>
+                </div>
               </div>
-            </div>
-            <n-text v-else depth="3" style="font-size: 11px;">无</n-text>
-          </n-collapse-item>
+              <n-text v-else depth="3" style="font-size: 11px;">无</n-text>
+            </n-collapse-item>
+          </n-collapse>
         </div>
         <n-empty v-else description="请选择要分析的怪兽" size="small" />
       </div>
@@ -325,15 +335,18 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, inject } from 'vue'
 import {
   NCard, NSpace, NText, NButton, NTooltip, NInput, NInputNumber,
   NSelect, NGrid, NGridItem, NTabs, NTab, NTag, NAlert, NEmpty,
-  NCollapseItem, NModal, useMessage
+  NCollapse, NCollapseItem, NModal, useMessage
 } from 'naive-ui'
 import { useSmallWorld, RACE_OPTIONS, ATTRIBUTE_OPTIONS, LEVEL_OPTIONS } from '../composables/useSmallWorld'
+import { useCardDatabase } from '../composables/useCardDatabase'
 
 const message = useMessage()
+const deck = inject('deck')
+
 const {
   monsters,
   addMonster,
@@ -345,6 +358,13 @@ const {
   loadMonsters,
   importFromJSON
 } = useSmallWorld()
+
+// 卡片数据库
+const {
+  isLoaded: isDbLoaded,
+  loadDefaultDatabase,
+  getCardsByIds
+} = useCardDatabase()
 
 // 选项数据
 const raceOptions = RACE_OPTIONS.map(r => ({ label: r, value: r }))
@@ -359,6 +379,70 @@ const pathTarget = ref(null)
 const analysisTarget = ref(null)
 const showImportModal = ref(false)
 const importText = ref('')
+const isImportingFromDeck = ref(false)
+
+// 从卡牌配置导入怪兽
+async function importFromDeck() {
+  if (!deck?.cards?.value) {
+    message.warning('无法获取卡牌配置数据')
+    return
+  }
+  
+  isImportingFromDeck.value = true
+  
+  try {
+    // 获取所有有 cardId 的卡牌
+    const cardsWithId = deck.cards.value.filter(c => c.cardId && c.count > 0)
+    
+    if (cardsWithId.length === 0) {
+      message.warning('卡牌配置中没有可识别的卡牌，请先导入卡组')
+      isImportingFromDeck.value = false
+      return
+    }
+    
+    // 确保数据库已加载
+    if (!isDbLoaded.value) {
+      await loadDefaultDatabase()
+    }
+    
+    // 获取卡片详细信息
+    const cardIds = cardsWithId.map(c => c.cardId)
+    const cardMap = getCardsByIds(cardIds)
+    
+    // 提取怪兽卡
+    const monsterList = []
+    for (const card of cardsWithId) {
+      const cardInfo = cardMap.get(card.cardId)
+      if (cardInfo && cardInfo.isMonster) {
+        monsterList.push({
+          id: Date.now() + Math.random(),
+          name: cardInfo.name,
+          atk: cardInfo.atk,
+          def: cardInfo.def,
+          level: cardInfo.level,
+          race: cardInfo.race,
+          attribute: cardInfo.attribute
+        })
+      }
+    }
+    
+    if (monsterList.length === 0) {
+      message.warning('卡牌配置中没有找到怪兽卡')
+      isImportingFromDeck.value = false
+      return
+    }
+    
+    // 导入怪兽
+    monsters.value = monsterList
+    saveMonsters()
+    message.success(`成功从卡组导入 ${monsterList.length} 只怪兽`)
+  } catch (e) {
+    console.error('从卡组导入失败:', e)
+    message.error('导入失败: ' + e.message)
+  } finally {
+    isImportingFromDeck.value = false
+  }
+}
 
 // 怪兽选择选项
 const monsterSelectOptions = computed(() => {

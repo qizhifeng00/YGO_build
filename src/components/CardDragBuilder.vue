@@ -7,11 +7,12 @@
       :style="floatingStyle"
       ref="floatingDeckRef"
     >
-      <!-- 弹窗标题栏 - 可拖动 -->
+      <!-- 弹窗标题栏 - 可拖动（支持 mouse/touch/pointer） -->
       <div 
         class="popup-header"
         @mousedown="startDrag"
         @touchstart="startDrag"
+        @pointerdown="startDrag"
       >
         <div class="popup-title">
           <span class="deck-icon">🃏</span>
@@ -42,13 +43,26 @@
             <template #item="{ element }">
               <div 
                 class="ygo-card" 
+                :class="{ 'has-image': element.cardId }"
                 @click="quickAddCard(element)"
               >
-                <div class="card-frame">
-                  <div class="card-header">
-                    <span class="card-label">{{ element.label }}</span>
-                    <span class="card-name" v-if="element.name">{{ element.name }}</span>
-                    <span class="card-count-badge">{{ element.count }}张</span>
+                <!-- 有卡图时显示卡图 -->
+                <img 
+                  v-if="element.cardId" 
+                  :src="getCardImageUrl(element.cardId)"
+                  :alt="element.name"
+                  class="card-image"
+                  loading="lazy"
+                  @error="handleImageError($event, element)"
+                />
+                <!-- 卡牌信息浮层 -->
+                <div class="card-overlay">
+                  <div class="card-frame">
+                    <div class="card-header">
+                      <span class="card-label">{{ element.label }}</span>
+                      <span class="card-name" v-if="element.name">{{ element.name }}</span>
+                      <span class="card-count-badge">{{ element.count }}张</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -60,7 +74,7 @@
     </div>
 
     <!-- 展开条件区 -->
-    <div class="combo-condition-area">
+    <div id="combo-condition-area" class="combo-condition-area">
       <div class="combo-header">
         <span class="combo-title">⚡ 展开条件</span>
         <n-space>
@@ -79,14 +93,14 @@
       </div>
 
       <!-- 展开逻辑选择 -->
-      <div class="logic-selector" v-if="conditionRows.length > 1">
+      <div id="logic-selector" class="logic-selector" v-if="conditionRows.length > 1">
         <n-text depth="2" style="font-size: 12px;">展开逻辑：</n-text>
         <n-radio-group v-model:value="globalLogic" size="small">
           <n-radio-button value="and">
             <span class="logic-label">且条件</span>
             <span class="logic-desc">（需同时上手）</span>
           </n-radio-button>
-          <n-radio-button value="or">
+          <n-radio-button id="or-condition-btn" value="or">
             <span class="logic-label">或条件</span>
             <span class="logic-desc">（上手其一）</span>
           </n-radio-button>
@@ -149,7 +163,14 @@
                       @update:value="emitUpdate"
                     />
                     <!-- 卡牌展示 -->
-                    <div class="dropped-ygo-card">
+                    <div class="dropped-ygo-card" :class="{ 'has-image': element.cardId }">
+                      <img 
+                        v-if="element.cardId" 
+                        :src="getCardImageUrl(element.cardId)"
+                        :alt="element.name"
+                        class="dropped-card-image"
+                        loading="lazy"
+                      />
                       <div class="card-info">
                         <span class="card-label">{{ element.label }}</span>
                         <span class="card-name" v-if="element.name">{{ element.name }}</span>
@@ -241,61 +262,72 @@ const floatingStyle = ref({
   transform: `translate3d(${posX}px, ${posY}px, 0)`
 })
 
-// 开始拖动弹窗
+// 获取事件的客户端坐标（兼容 mouse/touch/pointer）
+function getEventCoords(e) {
+  if (e.touches && e.touches.length > 0) {
+    return { x: e.touches[0].clientX, y: e.touches[0].clientY }
+  }
+  if (e.changedTouches && e.changedTouches.length > 0) {
+    return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY }
+  }
+  return { x: e.clientX || 0, y: e.clientY || 0 }
+}
+
+// 开始拖动弹窗 - 支持 Edge/Chrome/Firefox
 function startDrag(e) {
   // 阻止拖动卡牌时触发
   if (e.target.closest('.ygo-card')) return
   if (e.target.closest('.n-button')) return
   
   e.preventDefault()
+  e.stopPropagation()
   dragging = true
   
-  const clientX = e.touches ? e.touches[0].clientX : e.clientX
-  const clientY = e.touches ? e.touches[0].clientY : e.clientY
-  
-  offsetX = clientX - posX
-  offsetY = clientY - posY
+  const coords = getEventCoords(e)
+  offsetX = coords.x - posX
+  offsetY = coords.y - posY
   
   // 添加拖动状态样式
   if (floatingDeckRef.value) {
     floatingDeckRef.value.classList.add('is-dragging')
   }
   
-  document.addEventListener('mousemove', onDrag, { passive: false })
-  document.addEventListener('mouseup', stopDrag)
-  document.addEventListener('touchmove', onDrag, { passive: false })
-  document.addEventListener('touchend', stopDrag)
+  // 优先使用 pointer 事件（Edge 更好支持）
+  if (window.PointerEvent) {
+    document.addEventListener('pointermove', onDrag, { passive: false })
+    document.addEventListener('pointerup', stopDrag)
+    document.addEventListener('pointercancel', stopDrag)
+  } else {
+    document.addEventListener('mousemove', onDrag, { passive: false })
+    document.addEventListener('mouseup', stopDrag)
+    document.addEventListener('touchmove', onDrag, { passive: false })
+    document.addEventListener('touchend', stopDrag)
+  }
 }
 
-// 拖动中 - 使用 RAF 优化
+// 拖动中 - 直接更新，不使用 RAF 以提高响应性
 function onDrag(e) {
   if (!dragging) return
   e.preventDefault()
   
-  const clientX = e.touches ? e.touches[0].clientX : e.clientX
-  const clientY = e.touches ? e.touches[0].clientY : e.clientY
+  const coords = getEventCoords(e)
+  const maxX = window.innerWidth - 100
+  const maxY = window.innerHeight - 50
   
-  // 取消之前的 RAF
-  if (rafId) cancelAnimationFrame(rafId)
+  posX = Math.max(0, Math.min(coords.x - offsetX, maxX))
+  posY = Math.max(0, Math.min(coords.y - offsetY, maxY))
   
-  // 使用 RAF 更新位置
-  rafId = requestAnimationFrame(() => {
-    const maxX = window.innerWidth - 100
-    const maxY = window.innerHeight - 50
-    
-    posX = Math.max(0, Math.min(clientX - offsetX, maxX))
-    posY = Math.max(0, Math.min(clientY - offsetY, maxY))
-    
-    // 直接操作 DOM，绕过 Vue 响应式
-    if (floatingDeckRef.value) {
-      floatingDeckRef.value.style.transform = `translate3d(${posX}px, ${posY}px, 0)`
-    }
-  })
+  // 直接操作 DOM，绕过 Vue 响应式
+  if (floatingDeckRef.value) {
+    floatingDeckRef.value.style.transform = `translate3d(${posX}px, ${posY}px, 0)`
+  }
 }
 
 // 停止拖动
 function stopDrag() {
+  if (!dragging) return
   dragging = false
+  
   if (rafId) {
     cancelAnimationFrame(rafId)
     rafId = null
@@ -311,14 +343,27 @@ function stopDrag() {
     transform: `translate3d(${posX}px, ${posY}px, 0)`
   }
   
-  document.removeEventListener('mousemove', onDrag)
-  document.removeEventListener('mouseup', stopDrag)
-  document.removeEventListener('touchmove', onDrag)
-  document.removeEventListener('touchend', stopDrag)
+  // 移除所有可能的事件监听器
+  if (window.PointerEvent) {
+    document.removeEventListener('pointermove', onDrag)
+    document.removeEventListener('pointerup', stopDrag)
+    document.removeEventListener('pointercancel', stopDrag)
+  } else {
+    document.removeEventListener('mousemove', onDrag)
+    document.removeEventListener('mouseup', stopDrag)
+    document.removeEventListener('touchmove', onDrag)
+    document.removeEventListener('touchend', stopDrag)
+  }
 }
 
 onUnmounted(() => {
   if (rafId) cancelAnimationFrame(rafId)
+  // 清理所有可能的事件监听器
+  if (window.PointerEvent) {
+    document.removeEventListener('pointermove', onDrag)
+    document.removeEventListener('pointerup', stopDrag)
+    document.removeEventListener('pointercancel', stopDrag)
+  }
   document.removeEventListener('mousemove', onDrag)
   document.removeEventListener('mouseup', stopDrag)
   document.removeEventListener('touchmove', onDrag)
@@ -371,6 +416,19 @@ const operatorSymbols = {
 const availableCards = computed(() => {
   return props.cards.filter(card => card.count > 0)
 })
+
+// 获取卡牌图片 URL（使用本地 pics 文件夹）
+function getCardImageUrl(cardId) {
+  if (!cardId) return ''
+  const basePath = import.meta.env.BASE_URL || '/'
+  return `${basePath}pics/${cardId}.jpg`
+}
+
+// 处理图片加载失败
+function handleImageError(event, element) {
+  // 图片加载失败时隐藏图片
+  event.target.style.display = 'none'
+}
 
 // 获取展开路线标签
 function getRouteLabel(cardCount, index) {
@@ -721,39 +779,138 @@ defineExpose({
   aspect-ratio: 59 / 86; /* 标准游戏王卡牌比例 */
   cursor: grab;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  background-image: url('@/images/back.jpg');
-  background-size: cover;
-  background-position: center;
   border-radius: 5px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
+  padding: 0;
+  /* 无卡图时使用卡背图片 */
+  background-image: url('@/images/back.jpg');
+  background-size: cover;
+  background-position: center;
+}
+
+/* 无卡图时的内容区域 - 使用卡背样式 */
+.ygo-card:not(.has-image) .card-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
   padding: 6px;
+  background: linear-gradient(transparent 0%, rgba(0, 0, 0, 0.9) 100%);
+  border-radius: 0 0 3px 3px;
+  opacity: 1;
+}
+
+.ygo-card:not(.has-image) .card-frame {
+  width: 100%;
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  box-shadow: none;
+}
+
+.ygo-card:not(.has-image) .card-label {
+  font-size: 16px !important;
+  font-weight: 900 !important;
+  color: #d4af37 !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  line-height: 1;
+}
+
+.ygo-card:not(.has-image) .card-name {
+  font-size: 10px !important;
+  color: #fff !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  text-align: center;
+  word-break: break-all;
+  line-height: 1.2;
+  max-height: 24px;
   overflow: hidden;
 }
 
-.ygo-card::before {
-  content: '';
+.ygo-card:not(.has-image) .card-count-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: #000;
+  background: rgba(212, 175, 55, 0.9);
+  padding: 1px 8px;
+  border-radius: 8px;
+  margin-top: 2px;
+}
+
+.ygo-card:not(.has-image):hover {
+  border-color: #d4af37;
+  box-shadow: 0 8px 24px rgba(212, 175, 55, 0.4);
+}
+
+.ygo-card .card-image {
   position: absolute;
   top: 0;
   left: 0;
-  right: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 3px;
+  z-index: 1;
+}
+
+.ygo-card .card-overlay {
+  position: absolute;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.15);
-  pointer-events: none;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  padding: 4px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.85));
+  border-radius: 0 0 3px 3px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.ygo-card.has-image .card-overlay {
+  opacity: 1;
+}
+
+.ygo-card.has-image .card-overlay .card-frame {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 4px;
+}
+
+.ygo-card.has-image .card-overlay .card-label {
+  color: #d4af37 !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.ygo-card.has-image .card-overlay .card-name {
+  color: #fff !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  font-size: 11px;
+}
+
+.ygo-card.has-image .card-overlay .card-count-badge {
+  background: rgba(212, 175, 55, 0.9);
+  color: #000;
 }
 
 .ygo-card:hover {
   transform: translateY(-4px) scale(1.05);
   z-index: 10;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6);
 }
 
-.ygo-card:hover .card-frame {
-  background: rgba(255, 255, 255, 1);
-  transform: scale(1.02);
+.ygo-card.has-image:hover {
+  box-shadow: 0 8px 24px rgba(212, 175, 55, 0.4);
 }
 
 .card-frame {
@@ -972,13 +1129,25 @@ defineExpose({
 .dropped-ygo-card {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   padding: 6px 12px;
   border-radius: 8px;
   background: white;
   border: 1px solid #dcdfe6;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   transition: all 0.2s ease;
+}
+
+.dropped-ygo-card.has-image {
+  padding: 4px 10px 4px 4px;
+}
+
+.dropped-card-image {
+  width: 36px;
+  height: 52px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
 }
 
 .dropped-ygo-card:hover {

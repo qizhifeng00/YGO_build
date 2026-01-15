@@ -40,6 +40,7 @@
       <n-grid :cols="2" :x-gap="8">
         <n-grid-item>
           <n-button
+            id="exact-calc-btn"
             v-if="!calc.isCalculating.value"
             type="primary"
             @click="handleCalculate"
@@ -73,8 +74,108 @@
         </n-grid-item>
       </n-grid>
 
-      <!-- 重复卡牌概率计算 -->
+      <!-- 打断分析 -->
       <n-collapse>
+        <n-collapse-item title="🛡️ 打断分析" name="interruption">
+          <div class="interruption-section">
+            <n-space vertical :size="8">
+              <!-- 对手配置 + 手坑配置 合并 -->
+              <div class="calc-mode-section" style="padding: 8px 10px;">
+                <div class="interrupt-config-row">
+                  <n-space align="center" :size="8">
+                    <n-input-number v-model:value="opponentDeckSize" size="small" :min="20" :max="60" style="width: 115px;">
+                      <template #prefix>卡组</template>
+                    </n-input-number>
+                    <n-input-number v-model:value="opponentDrawCount" size="small" :min="1" :max="10" style="width: 115px;">
+                      <template #prefix>起手</template>
+                    </n-input-number>
+                  </n-space>
+                </div>
+                <div class="handtrap-compact">
+                  <div v-for="trap in handTraps" :key="trap.id" class="handtrap-item-compact">
+                    <n-tooltip trigger="hover">
+                      <template #trigger>
+                        <n-tag :type="trap.tagType" size="medium" style="font-size: 13px;">{{ trap.icon }} {{ trap.name }}</n-tag>
+                      </template>
+                      <div style="max-width: 280px;">
+                        <div><strong>{{ trap.fullName }}</strong></div>
+                        <div style="color: #94a3b8; margin: 4px 0;">{{ trap.effect }}</div>
+                        <div style="color: #fbbf24;">⚡ {{ trap.condition }}</div>
+                      </div>
+                    </n-tooltip>
+                    <n-input-number v-model:value="trap.count" size="small" :min="0" :max="3" style="width: 70px;" />
+                  </div>
+                </div>
+                <n-space style="margin-top: 6px;" :size="8">
+                  <n-button size="small" quaternary @click="setAllHandTraps(3)">满投</n-button>
+                  <n-button size="small" quaternary @click="setAllHandTraps(0)">清零</n-button>
+                  <n-button size="small" quaternary type="info" @click="applyMetaPreset">主流</n-button>
+                </n-space>
+              </div>
+
+              <!-- 己方关键点 -->
+              <div class="calc-mode-section" style="padding: 8px 10px;">
+                <n-text strong style="font-size: 14px; margin-bottom: 6px; display: block;">🎯 己方关键点</n-text>
+                <div class="keypoint-compact">
+                  <div class="keypoint-item-compact">
+                    <n-text strong style="font-size: 13px;">🔍 检索点</n-text>
+                    <n-input-number v-model:value="keyPoints.search" size="small" :min="0" :max="10" style="width: 70px;" />
+                  </div>
+                  <div class="keypoint-item-compact">
+                    <n-text strong style="font-size: 13px;">💫 效果点</n-text>
+                    <n-input-number v-model:value="keyPoints.negate" size="small" :min="0" :max="10" style="width: 70px;" />
+                  </div>
+                </div>
+              </div>
+
+              <!-- 计算按钮 -->
+              <n-button type="primary" block @click="calculateInterruption" :loading="isCalculatingInterruption" style="height: 38px; font-size: 14px;">
+                🔮 分析打断风险
+              </n-button>
+
+              <!-- 结果展示 -->
+              <div v-if="interruptionResults" class="interruption-results">
+                <div class="interrupt-summary">
+                  <div class="interrupt-stat">
+                    <n-text depth="3" style="font-size: 12px;">被打断</n-text>
+                    <n-text :type="interruptionResults.riskLevel" strong style="font-size: 24px;">
+                      {{ interruptionResults.overallProb }}
+                    </n-text>
+                  </div>
+                  <n-divider vertical />
+                  <div class="interrupt-stat">
+                    <n-text depth="3" style="font-size: 12px;">安全通过</n-text>
+                    <n-text type="success" strong style="font-size: 24px;">
+                      {{ interruptionResults.safeProb }}
+                    </n-text>
+                  </div>
+                </div>
+
+                <n-table :bordered="false" :single-line="false" size="small" style="margin-top: 8px;">
+                  <thead>
+                    <tr>
+                      <th>手坑</th>
+                      <th>数量</th>
+                      <th>抽到率</th>
+                      <th>威胁</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="r in interruptionResults.details" :key="r.id">
+                      <td><n-tag :type="r.tagType" size="small">{{ r.icon }} {{ r.name }}</n-tag></td>
+                      <td style="font-size: 13px;">{{ r.count }}张</td>
+                      <td><n-text :type="r.probType" strong style="font-size: 14px;">{{ r.prob }}</n-text></td>
+                      <td><n-text :type="r.threatType" style="font-size: 13px;">{{ r.threat }}</n-text></td>
+                    </tr>
+                  </tbody>
+                </n-table>
+
+              </div>
+            </n-space>
+          </div>
+        </n-collapse-item>
+
+        <!-- 重复卡牌概率计算 -->
         <n-collapse-item title="🎴 重复卡牌概率" name="duplicate">
           <div class="duplicate-section">
             <n-space vertical :size="12">
@@ -315,6 +416,79 @@
   border-radius: 8px;
   border: 2px solid #ef4444;
 }
+
+/* 打断分析样式 */
+.interruption-section {
+  padding: 2px 0;
+}
+
+.interrupt-config-row {
+  margin-bottom: 8px;
+}
+
+.handtrap-compact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.handtrap-item-compact {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.keypoint-compact {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.keypoint-item-compact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.interruption-results {
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+  border-radius: 8px;
+  padding: 10px;
+  border: 1px solid #fbbf24;
+}
+
+.interrupt-summary {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  padding: 8px;
+  background: white;
+  border-radius: 6px;
+  border: 2px solid #f59e0b;
+}
+
+.interrupt-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.interruption-results :deep(.n-table) {
+  background: transparent;
+}
+
+.interruption-results :deep(.n-table th) {
+  background: rgba(251, 191, 36, 0.2);
+  font-weight: 600;
+  font-size: 13px;
+  padding: 6px 8px;
+}
+
+.interruption-results :deep(.n-table td) {
+  font-size: 13px;
+  padding: 6px 8px;
+}
 </style>
 
 <script setup>
@@ -322,7 +496,8 @@ import { inject, ref, computed } from 'vue'
 import { 
   NCard, NSpace, NButton, NProgress, NText, NAlert,
   NDivider, NGrid, NGridItem, NCollapse, NCollapseItem,
-  NSelect, NTable, NTag, useMessage, useDialog 
+  NSelect, NTable, NTag, NInputNumber, NTooltip,
+  useMessage, useDialog 
 } from 'naive-ui'
 
 const message = useMessage()
@@ -333,6 +508,145 @@ const calc = inject('calculation')
 const condition = inject('condition')
 const draws = inject('draws')
 const autoIncrementDraws = inject('autoIncrementDraws')
+
+// ========== 打断分析 ==========
+const opponentDeckSize = ref(40)
+const opponentDrawCount = ref(5)
+const isCalculatingInterruption = ref(false)
+const interruptionResults = ref(null)
+
+// 热门手坑（核心2张）
+const handTraps = ref([
+  { 
+    id: 'ash', name: '灰流丽', fullName: '灰流うらら', icon: '🌸', tagType: 'error',
+    effect: '无效「从卡组抽卡以外方法加入手卡」「从卡组特殊召唤」「从墓地把卡加入卡组」的效果',
+    condition: '手牌发动，无条件',
+    shortDesc: '打断检索', category: 'search', count: 3
+  },
+  { 
+    id: 'imperm', name: '泡影', fullName: '无限泡影', icon: '👻', tagType: 'info',
+    effect: '无效对方场上1只效果怪兽的效果直到回合结束',
+    condition: '手牌发动需己方场上无卡 / 可盖放发动',
+    shortDesc: '无效怪效', category: 'negate', count: 3
+  },
+])
+
+// 己方关键点
+const keyPoints = ref({
+  search: 2,  // 检索点：会被灰流丽打断
+  negate: 2   // 效果点：会被泡影无效
+})
+
+// 设置所有手坑数量
+function setAllHandTraps(count) {
+  handTraps.value.forEach(trap => trap.count = count)
+}
+
+// 主流配置预设
+function applyMetaPreset() {
+  const preset = { ash: 3, imperm: 3 }
+  handTraps.value.forEach(trap => trap.count = preset[trap.id] ?? 0)
+}
+
+// 组合数计算
+function comb(n, k) {
+  if (k < 0 || k > n) return 0
+  if (k === 0 || k === n) return 1
+  let result = 1
+  for (let i = 1; i <= k; i++) result = result * (n - k + i) / i
+  return result
+}
+
+// 计算抽到至少1张的概率
+function probAtLeastOne(target, deck, draw) {
+  if (target === 0) return 0
+  return 1 - comb(deck - target, draw) / comb(deck, draw)
+}
+
+// 打断分析计算
+function calculateInterruption() {
+  isCalculatingInterruption.value = true
+  
+  setTimeout(() => {
+    try {
+      const deck = opponentDeckSize.value
+      const draw = opponentDrawCount.value
+      const details = []
+      
+      // 按类型分组统计
+      const searchTraps = handTraps.value.filter(t => t.category === 'search')
+      const negateTraps = handTraps.value.filter(t => t.category === 'negate')
+      
+      const totalSearchCount = searchTraps.reduce((s, t) => s + t.count, 0)
+      const totalNegateCount = negateTraps.reduce((s, t) => s + t.count, 0)
+      
+      // 各类型抽到概率
+      const searchProb = probAtLeastOne(totalSearchCount, deck, draw)
+      const negateProb = probAtLeastOne(totalNegateCount, deck, draw)
+      
+      // 计算每张卡的详情
+      handTraps.value.forEach(trap => {
+        const prob = probAtLeastOne(trap.count, deck, draw)
+        let threat = '无'
+        let threatType = 'default'
+        
+        if (trap.count > 0) {
+          if (trap.category === 'search' && keyPoints.value.search > 0) {
+            threat = `威胁${keyPoints.value.search}处检索`
+            threatType = 'warning'
+          } else if (trap.category === 'negate' && keyPoints.value.negate > 0) {
+            threat = `威胁${keyPoints.value.negate}处怪效`
+            threatType = 'warning'
+          }
+        }
+        
+        details.push({
+          id: trap.id,
+          name: trap.name,
+          icon: trap.icon,
+          tagType: trap.tagType,
+          count: trap.count,
+          prob: (prob * 100).toFixed(1) + '%',
+          probType: prob > 0.6 ? 'error' : prob > 0.3 ? 'warning' : 'default',
+          threat,
+          threatType
+        })
+      })
+      
+      // 综合被打断概率
+      let overallInterrupt = 0
+      if (keyPoints.value.search > 0) {
+        overallInterrupt = 1 - (1 - overallInterrupt) * (1 - searchProb)
+      }
+      if (keyPoints.value.negate > 0) {
+        overallInterrupt = 1 - (1 - overallInterrupt) * (1 - negateProb)
+      }
+      
+      const safeProb = 1 - overallInterrupt
+      
+      // 风险等级
+      let riskLevel = 'success'
+      if (overallInterrupt > 0.6) {
+        riskLevel = 'error'
+      } else if (overallInterrupt > 0.35) {
+        riskLevel = 'warning'
+      }
+      
+      interruptionResults.value = {
+        overallProb: (overallInterrupt * 100).toFixed(1) + '%',
+        safeProb: (safeProb * 100).toFixed(1) + '%',
+        riskLevel,
+        details: details.filter(d => d.count > 0)
+      }
+      
+      message.success('打断分析完成！')
+    } catch (e) {
+      message.error('分析失败：' + e.message)
+    } finally {
+      isCalculatingInterruption.value = false
+    }
+  }, 50)
+}
 
 // ========== 重复卡牌概率计算 ==========
 const selectedCardIndex = ref(null)
