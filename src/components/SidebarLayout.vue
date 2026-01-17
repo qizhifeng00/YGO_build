@@ -65,22 +65,8 @@
           <!-- 卡组管理面板（含卡牌配置） -->
           <div v-show="activePanel === 'deck'" class="panel-container">
             <template v-for="panel in sortedDeckPanels" :key="panel.id">
-              <div 
-                class="draggable-panel"
-                :class="{ 
-                  dragging: draggingPanelId === panel.id,
-                  'drag-over': dragOverPanelId === panel.id
-                }"
-                draggable="true"
-                @dragstart="onPanelDragStart($event, panel, 'deck')"
-                @dragend="onPanelDragEnd"
-                @dragover.prevent="onPanelDragOver(panel)"
-                @drop.prevent="onPanelDrop(panel, 'deck')"
-              >
-                <div class="panel-drag-handle" title="拖拽调整顺序">⋮⋮</div>
-                <div class="panel-content">
-                  <slot :name="panel.slot"></slot>
-                </div>
+              <div class="panel-item">
+                <slot :name="panel.slot"></slot>
               </div>
             </template>
           </div>
@@ -88,22 +74,8 @@
           <!-- 辅助工具面板 -->
           <div v-show="activePanel === 'tools'" class="panel-container">
             <template v-for="panel in sortedToolsPanels" :key="panel.id">
-              <div 
-                class="draggable-panel"
-                :class="{ 
-                  dragging: draggingPanelId === panel.id,
-                  'drag-over': dragOverPanelId === panel.id
-                }"
-                draggable="true"
-                @dragstart="onPanelDragStart($event, panel, 'tools')"
-                @dragend="onPanelDragEnd"
-                @dragover.prevent="onPanelDragOver(panel)"
-                @drop.prevent="onPanelDrop(panel, 'tools')"
-              >
-                <div class="panel-drag-handle" title="拖拽调整顺序">⋮⋮</div>
-                <div class="panel-content">
-                  <slot :name="panel.slot"></slot>
-                </div>
+              <div class="panel-item">
+                <slot :name="panel.slot"></slot>
               </div>
             </template>
           </div>
@@ -145,7 +117,7 @@ const props = defineProps({
   },
   maxWidth: {
     type: Number,
-    default: 600
+    default: 700
   }
 })
 
@@ -170,6 +142,7 @@ const defaultToolsPanels = [
   { id: 'small-world', slot: 'small-world' },
   { id: 'reasoning', slot: 'reasoning' },
   { id: 'optimizer', slot: 'optimizer' },
+  { id: 'replay', slot: 'replay' },
 ]
 
 // 活动栏顺序
@@ -697,50 +670,8 @@ defineExpose({
   gap: 12px;
 }
 
-/* 可拖拽面板样式 */
-.draggable-panel {
-  position: relative;
-  border-radius: 8px;
-}
-
-.draggable-panel:hover .panel-drag-handle {
-  opacity: 1;
-}
-
-.draggable-panel.dragging {
-  opacity: 0.5;
-}
-
-.draggable-panel.drag-over {
-  box-shadow: 0 -2px 0 0 #3b82f6;
-}
-
-.panel-drag-handle {
-  position: absolute;
-  top: 8px;
-  left: -8px;
-  width: 16px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: grab;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-  color: #94a3b8;
-  font-size: 10px;
-  letter-spacing: 1px;
-  z-index: 10;
-  user-select: none;
-  -webkit-user-select: none;
-  -ms-user-select: none;
-}
-
-.panel-drag-handle:active {
-  cursor: grabbing;
-}
-
-.panel-content {
+/* 面板项样式 */
+.panel-item {
   width: 100%;
 }
 
@@ -790,10 +721,6 @@ defineExpose({
   
   .main-content {
     padding: 8px;
-  }
-  
-  .panel-drag-handle {
-    display: none;
   }
 }
 

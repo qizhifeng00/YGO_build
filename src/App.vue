@@ -207,6 +207,9 @@
                           <n-button size="small" secondary @click="switchToPanel('tools')">
                             🛠️ 辅助工具
                           </n-button>
+                          <n-button size="small" type="warning" @click="showReplayPlayer = true">
+                            🎬 回放YRP
+                          </n-button>
                         </n-space>
                       </n-card>
                     </n-space>
@@ -216,6 +219,19 @@
             </div>
           </template>
         </SidebarLayout>
+        
+        <!-- 回放播放器全屏弹窗 -->
+        <n-modal 
+          v-model:show="showReplayPlayer" 
+          preset="card"
+          :mask-closable="false"
+          :close-on-esc="true"
+          style="width: 100vw; height: 100vh; max-width: 100vw; padding: 0;"
+          :content-style="{ padding: 0, height: '100%' }"
+          :header-style="{ display: 'none' }"
+        >
+          <ReplayModePlayer @close="showReplayPlayer = false" />
+        </n-modal>
       </n-dialog-provider>
     </n-message-provider>
   </n-config-provider>
@@ -230,7 +246,7 @@ import 'driver.js/dist/driver.css'
 import { 
   NConfigProvider, NMessageProvider, NDialogProvider,
   NText, NSpace, NGrid, NGridItem, NCard,
-  NTag, NDivider, NButton
+  NTag, NDivider, NButton, NModal
 } from 'naive-ui'
 
 // 布局组件
@@ -247,6 +263,8 @@ import CalculationPanel from './components/CalculationPanel.vue'
 import DeckOptimizer from './components/DeckOptimizer.vue'
 import ReasoningCalculator from './components/ReasoningCalculator.vue'
 import SmallWorldCalculator from './components/SmallWorldCalculator.vue'
+import ReplayModePlayer from './components/ReplayModePlayer.vue'
+
 
 // Composables
 import { useDeck } from './composables/useDeck'
@@ -458,6 +476,9 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
 })
+
+// 回放播放器显示状态
+const showReplayPlayer = ref(false)
 
 // 条件和抽卡设置
 const condition = ref('')
