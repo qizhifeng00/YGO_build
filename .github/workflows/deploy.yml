@@ -20,6 +20,15 @@ jobs:
         with:
           node-version: 20
 
+      - name: Install Lua and Database
+        run: |
+          cd public
+          wget https://github.com/mycard/ygopro-database/raw/refs/heads/master/locales/zh-CN/cards.cdb
+          wget https://github.com/Smile-DK/ygopro-scripts/archive/refs/heads/master.zip -O lua.zip
+          unzip lua.zip
+          mv ygopro-scripts-master scripts
+          rm lua.zip
+
       - name: Install and Build
         run: |
           npm install
