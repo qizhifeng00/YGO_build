@@ -4941,6 +4941,8 @@ async function loadOCGCore() {
   }
 }
 
+import wasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
+
 // 加载卡片数据库 (使用 sql.js)
 async function loadCardDatabase() {
   loadingStatus.value = '加载卡片数据库...'
@@ -4950,7 +4952,7 @@ async function loadCardDatabase() {
     // 动态导入 sql.js
     const initSqlJs = (await import('sql.js')).default
     const SQL = await initSqlJs({
-      locateFile: () => `${BASE_URL}sql-wasm.wasm`
+      locateFile: () => wasmUrl
     })
 
     // 加载 cards.cdb
