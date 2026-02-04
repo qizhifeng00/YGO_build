@@ -58,13 +58,14 @@ let sqlPromise = null
 /**
  * 初始化 SQL.js (ESM 导入，本地 WASM)
  */
+import wasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 async function initSql() {
   if (!sqlPromise) {
     sqlPromise = (async () => {
       // 初始化，WASM 文件从本地 public 目录加载
       const basePath = import.meta.env.BASE_URL || '/'
       const SQL = await initSqlJs({
-        locateFile: () => `${basePath}sql-wasm.wasm`
+        locateFile: () => wasmUrl
       })
       return SQL
     })()
